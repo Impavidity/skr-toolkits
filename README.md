@@ -1,6 +1,7 @@
 # Toolkits for Structured Knowledge Research (skr!)
 
 ## Contents
+- [How to obtain Wikipedia HTML?](docs/wikipedia-toolkit.md)
 - How to extract tables from Wikipedia? 
 - How to align sentences with tables in Wikipedia?
 - How to extract triples from text?

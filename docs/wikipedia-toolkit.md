@@ -1,4 +1,4 @@
-# Wikipedia Toolkits
+# Wikipedia Toolkit Usages
 
 ## Setup
 ```
