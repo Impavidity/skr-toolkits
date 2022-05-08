@@ -9,8 +9,8 @@ Mention has two argument: text and span
 There is no help function on how to obtain this alignment.
 """
 
-from skr2.table.table import Table, TableConfig, Cell
-from skr2.table.context import Context, ContextConfig
+from skr2.structure.table import Table, TableConfig, Cell
+from skr2.structure.context import Context, ContextConfig
 from skr2.table.tokenizer_magic import SpacyTokenizerMagic
 
 
@@ -84,7 +84,7 @@ class ContextTablePair:
 
 
   @classmethod
-  def from_totto_annotation(cls, d, config=None):
+  def from_totto_annotation(cls, d, table_config=None, context_config=None):
     def exact_match(x_list, y_list):
       x_str = " ".join([str(t) for t in x_list])
       y_str = " ".join([str(t) for t in y_list])
@@ -117,16 +117,19 @@ class ContextTablePair:
         return None
 
     focus_entities = []
-    table_config = TableConfig()
+    if table_config is None:
+      table_config = TableConfig()
     table = Table.from_totto_annotation(d, table_config)
-    context_config = ContextConfig()
+    if context_config is None:
+      context_config = ContextConfig()
     context = Context.from_totto_annotation(d, context_config)
-    for highlighted_cell in d["highlighted_cells"]:
-      row_index, column_index = highlighted_cell
-      cell = table.get_cell(row_index, column_index)
-      focus_entity = has_unique_exact_match_alignment(context, cell, cls.tokenizer)
-      if focus_entity is not None:
-        focus_entities.append(focus_entity)
+    if table_config.no_process is False:
+      for highlighted_cell in d["highlighted_cells"]:
+        row_index, column_index = highlighted_cell
+        cell = table.get_cell(row_index, column_index)
+        focus_entity = has_unique_exact_match_alignment(context, cell, cls.tokenizer)
+        if focus_entity is not None:
+          focus_entities.append(focus_entity)
     return cls(
       config=None,
       table=table,

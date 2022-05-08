@@ -41,7 +41,7 @@ def table_linearization(table_array):
   strs = ["col: {}".format(" | ".join(table_array[0]))]
   for row_idx, row in enumerate(table_array[1:]):
     strs.append("row {}: {}".format(row_idx, " | ".join(row)))
-  return " ".join(strs)
+  return " | ".join(strs)
 
 class SamplingTask(enum.Enum):
   RETRIEVAL = 0
@@ -291,22 +291,23 @@ class Table:
 
   def classify_column_types(self):
     type_to_column = {"TEXT": [], "NUMBER": [], "GROUPED_TEXT": []}
-    for idx, cell in enumerate(self.contents[0]):
-      if cell.rank is not None:
-        self.columns[idx].column_type = "NUMBER"
-      else:
-        self.columns[idx].column_type = "TEXT"
-      type_to_column[self.columns[idx].column_type].append(self.columns[idx])
-      if self.columns[idx].column_type == "TEXT":
-        # Check if it is group text
-        cell_values = set()
-        for row in self.contents:
-          if len(row[idx].text) > 0:
-            if row[idx].text in cell_values:
-              type_to_column["GROUPED_TEXT"].append(self.columns[idx])
-              break
-            else:
-              cell_values.add(row[idx].text)
+    if len(self.contents) > 0:
+      for idx, cell in enumerate(self.contents[0]):
+        if cell.rank is not None:
+          self.columns[idx].column_type = "NUMBER"
+        else:
+          self.columns[idx].column_type = "TEXT"
+        type_to_column[self.columns[idx].column_type].append(self.columns[idx])
+        if self.columns[idx].column_type == "TEXT":
+          # Check if it is group text
+          cell_values = set()
+          for row in self.contents:
+            if len(row[idx].text) > 0:
+              if row[idx].text in cell_values:
+                type_to_column["GROUPED_TEXT"].append(self.columns[idx])
+                break
+              else:
+                cell_values.add(row[idx].text)
     return type_to_column
 
   def create_rank(self):
@@ -556,7 +557,12 @@ class Table:
     :param d: json object
     :return: Table class
     """
-    table_array = [[cell["text"] for cell in row] for row in d["annotations"]]
+    try:
+      table_array = [[cell["text"] for cell in row] for row in d["annotations"]]
+      page_title = d["page_title"]["text"]
+    except:
+      table_array = d["annotations"]
+      page_title = d["page_title"]
     if len(table_array) == 0:
       # raise ValueError("The table is empty")
       return None
@@ -566,7 +572,7 @@ class Table:
     return cls(
       config=config,
       table=table_array,
-      page_title=d["page_title"]["text"],
+      page_title=page_title,
       section_titles=d["section_titles"],
       table_caption=d["table_caption"],
       page_url=d["url"],
@@ -612,7 +618,7 @@ class Table:
       page_url=d["table_webpage_url"],
     )
 
-from malaina.utils.template import (
+from skr2.structure.template import (
   SynthesizationError,
   _synthesize_count_condition,
   _synthesize_aggregation_expression,
@@ -632,7 +638,7 @@ def synthesize_from_table(table: Table):
 
 if __name__ == "__main__":
   from malaina.utils import crash_on_ipy
-  from malaina.structure.table import TableConfig, Table
+  # from skr2.structure.table import TableConfig, Table
   import json
 
   tables = []

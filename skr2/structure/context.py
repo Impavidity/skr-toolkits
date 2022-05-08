@@ -1,5 +1,5 @@
 import dataclasses
-from skr2.table.table import table_linearization
+from skr2.structure.table import table_linearization
 from skr2.table.tokenizer_magic import SpacyTokenizerMagic
 
 
