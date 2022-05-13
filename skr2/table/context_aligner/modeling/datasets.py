@@ -45,7 +45,6 @@ class HFTrainDataset:
             )
         return self.dataset
 
-
 class HFQueryDataset:
     def __init__(self, tokenizer: PreTrainedTokenizer, data_args: DataArguments, cache_dir: str):
         data_files = data_args.encode_in_path
@@ -54,8 +53,7 @@ class HFQueryDataset:
         self.dataset = load_dataset(data_args.dataset_name,
                                     data_args.dataset_language,
                                     data_files=data_files, cache_dir=cache_dir)[data_args.dataset_split]
-        self.preprocessor = PROCESSOR_INFO[data_args.dataset_name][1] if data_args.dataset_name in PROCESSOR_INFO \
-            else DEFAULT_PROCESSORS[1]
+        self.preprocessor = DEFAULT_PROCESSORS[1]
         self.tokenizer = tokenizer
         self.q_max_len = data_args.q_max_len
         self.proc_num = data_args.dataset_proc_num
@@ -81,11 +79,10 @@ class HFCorpusDataset:
         self.dataset = load_dataset(data_args.dataset_name,
                                     data_args.dataset_language,
                                     data_files=data_files, cache_dir=cache_dir)[data_args.dataset_split]
-        script_prefix = data_args.dataset_name
-        if script_prefix.endswith('-corpus'):
-            script_prefix = script_prefix[:-7]
-        self.preprocessor = PROCESSOR_INFO[script_prefix][2] \
-            if script_prefix in PROCESSOR_INFO else DEFAULT_PROCESSORS[2]
+        # script_prefix = data_args.dataset_name
+        # if script_prefix.endswith('-corpus'):
+        #     script_prefix = script_prefix[:-7]
+        self.preprocessor = DEFAULT_PROCESSORS[2]
         self.tokenizer = tokenizer
         self.p_max_len = data_args.p_max_len
         self.proc_num = data_args.dataset_proc_num

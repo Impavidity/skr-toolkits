@@ -1,11 +1,12 @@
 # Toolkits for Structured Knowledge Research (skr!)
 
 ## Contents
-- [How to obtain Wikipedia HTML?](docs/wikipedia-toolkit.md)
+- [How to obtain Wikipedia HTML?](docs/wikipedia-toolkit.md#how-to-crawl-wikipedia-html-pages)
 - How to extract tables from Wikipedia? 
 - How to align sentences with tables in Wikipedia?
 - How to extract triples from text?
 - How to link entities to Wikipedia?
+- How to write `run.py` for retrieval models?
 
 ## Environment Setup
 
@@ -25,4 +26,17 @@ popd
 pip install beautifulsoup4
 pip install requests
 pip install transformers
+pip install spacy
+python -m spacy download en_core_web_sm
+pip install pudb
+pip install wandb
+pushd third_party
+git clone https://github.com/texttron/tevatron
+cd tevatron
+pip install --editable .
+popd
+conda install -c pytorch faiss-gpu
+pip install nltk
+pip install pandas
+pip install tabulate
 ```

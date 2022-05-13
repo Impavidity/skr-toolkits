@@ -36,6 +36,7 @@ from collections import defaultdict
 import nltk.corpus
 import string
 import spacy
+from skr2.structure.table import annotate_cell_values, NUMERICAL_NER_TAGS
 from skr2.utils import crash_on_ipy
 
 LANGUAGE_TO_TITLE = {
@@ -131,42 +132,6 @@ def is_valid_cell(value):
     return False
   return True
 
-def is_num(value):
-  try:
-    float(value)
-    return True
-  except:
-    return False
-
-NUMERICAL_NER_TAGS = {'TIME', 'PERCENT', 'MONEY', 'QUANTITY', 'CARDINAL'}
-IGNORE_TOKENS = ['(', ')']
-SPECIAL_TOKENS = ['°C', '°F']
-def is_valid_statistics(sample_value_entry):
-  if sample_value_entry.get("header", None) == "Year":
-    return False
-  value = sample_value_entry["text"]
-  if "," in value or "." in value or ":" in value:
-    if is_num(value.replace(",", "").replace(".", "").replace(":", "")):
-      return True
-
-  if any([special in value for special in SPECIAL_TOKENS]):
-    return True
-
-  if len(value) == 4 or len(value) == 1:
-    return False
-
-  num_numerical_tags = 0
-  num_other_tags = 0
-  for token, tag in zip(sample_value_entry["tokens"], sample_value_entry["ner_tags"]):
-    if tag in NUMERICAL_NER_TAGS:
-      num_numerical_tags += 1
-    elif token in IGNORE_TOKENS:
-      continue
-    else:
-      num_other_tags += 1
-  return True if num_numerical_tags > num_other_tags else False
-
-
 # We use Non-date NER tags
 def infer_column_type_from_sampled_value(sample_value_entry):
     if not 'ner_tags' in sample_value_entry:
@@ -186,22 +151,7 @@ def infer_column_type_from_sampled_value(sample_value_entry):
 
     return 'real' if num_numerical_tags >= num_other_tags else 'text'
 
-def normalize_cell_value(text):
-  for month in [("Jan ", "January "),
-                ("Feb ", "February "),
-                ("Mar ", "March "),
-                ("Apr ", "April "),
-                ("May ", "May "),
-                ("Jun ", "June "),
-                ("Jul ", "July "),
-                ("Aug ", "August "),
-                ("Sep ", "September "),
-                ("Oct ", "October "),
-                ("Nov ", "November "),
-                ("Dec ", "December ")]:
-    if month[0] in text:
-      text = text.replace(month[0], month[1])
-  return text
+
 
 def exact_match(x_list, y_list):
   x_str = " ".join(x_list)
@@ -230,6 +180,8 @@ def partial_match(x_list, y_list):
     return True
   else:
     return False
+
+
 
 class HtmlTable(object):
   def __init__(self, table):
@@ -322,28 +274,7 @@ class HtmlTable(object):
         row.append(cell_text)
       self.rows.append(row)
 
-  def annotate_cell_values(self, nlp):
-    self.annotations = []
-    schema = {}
-    if len(self.rows) > 0:
-      for col_idx, cell_value in enumerate(self.rows[0]):
-        schema[col_idx] = cell_value
-    for row_idx, row in enumerate(self.rows):
-      annotation = []
-      for col_idx, cell_value in enumerate(row):
-        cell_value = normalize_cell_value(cell_value)
-        text = nlp(cell_value)
-        annotated_cell_value = {
-          "row_idx": row_idx,
-          "col_idx": col_idx,
-          "ner_tags": [token.ent_type_ for token in text],
-          "tokens": [token.text for token in text],
-          "text": cell_value,
-          "header": schema.get(col_idx, "None")}
-        # cell_value_type = infer_column_type_from_sampled_value(annotated_cell_value)
-        annotated_cell_value["is_stat"] = is_valid_statistics(annotated_cell_value)
-        annotation.append(annotated_cell_value)
-      self.annotations.append(annotation)
+
 
   def check_hidden(self, tag):
     classes = tag.get('class', [])
@@ -359,9 +290,9 @@ class HtmlTable(object):
       tag.extract()
 
 
-class TableExtractor(multiprocessing.Process):
+class WikiExtractor(multiprocessing.Process):
   def __init__(self, mode, job_queue, table_queue, sentence_queue, language="en", **kwargs):
-    super(TableExtractor, self).__init__(**kwargs)
+    super(WikiExtractor, self).__init__(**kwargs)
     self.mode = mode
     self.job_queue = job_queue
     self.table_queue = table_queue
@@ -382,7 +313,9 @@ class TableExtractor(multiprocessing.Process):
         if self.mode == "EXTRACT_TABLE_HTML":
           for table in self._extract_table(url, page):
             self.table_queue.put(table)
-        # if self.mode == ""
+        if self.mode == "EXTRACT_CONTEXT":
+          for context in self.extract_context(url, page):
+            self.sentence_queue.put(context)
 
         # for table in self._extract_table(url, page):
         #   self.table_queue.put(table)
@@ -427,7 +360,7 @@ class TableExtractor(multiprocessing.Process):
     rs = soup.find_all(class_='wikitable')
     for idx, r in enumerate(rs):
       table = HtmlTable(r)
-      table.annotate_cell_values(self.nlp)
+      table.annotations = annotate_cell_values(table.rows, self.nlp)
       table.page_title = page_title
       title_text = self.nlp(table.page_title)
       title_element = {
@@ -478,6 +411,7 @@ class TableExtractor(multiprocessing.Process):
 
   def extract_context(self, url, page_content):
     soup = BeautifulSoup(page_content, 'html.parser')
+    page_title = soup.title.text
     # Remove sup
     # Simple superscript extraction
     for element in soup.find_all('sup'):
@@ -490,10 +424,16 @@ class TableExtractor(multiprocessing.Process):
       element.extract()
     paras = soup.find_all("p")
     sentences = []
-    for paragraph in paras:
-      for para in paragraph.text.split("\n"):
+    for para_id, paragraph in enumerate(paras):
+      for split_id, para in enumerate(paragraph.text.split("\n")):
         sents = sent_tokenize(para)
-        sentences.extend(sents)
+        for sent_id, sent in enumerate(sents):
+          sentences.append({
+            "para_id": para_id,
+            "split_id": split_id,
+            "sent_id": sent_id,
+            "sent": sent,
+            "title": page_title})
     return sentences
 
   def matching(self, table, sentences):
@@ -570,10 +510,11 @@ class TableExtractor(multiprocessing.Process):
                                                                  )
           highlighted_cells.extend(cells)
         # print(highlighted_cells)
-        if annotated_sentence:
-          aligned_element = self.element_sentence_matching(table["page_title"], annotated_sentence)
-          if aligned_element is not None:
-            highlighted_cells.append(aligned_element)
+        # Whether to use title
+        # if annotated_sentence:
+        #   aligned_element = self.element_sentence_matching(table["page_title"], annotated_sentence)
+        #   if aligned_element is not None:
+        #     highlighted_cells.append(aligned_element)
           # print(highlighted_cells)
         # if len(highlighted_cells) > 0:
         #   # The annotated_sentence must be not None
@@ -594,6 +535,47 @@ class TableExtractor(multiprocessing.Process):
         print('*' * 30 + 'Exception' + '*' * 30, file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
 
+    return candidate_sentences
+
+  def _matching(self, table, sentences, force_valid=False):
+    candidate_sentences = []
+
+    def get_highlighted_spans(highlighted_cells, annotated_sentence):
+      spans = set()
+      for highlighted_cell in highlighted_cells:
+        spans.add(highlighted_cell["text"])
+      return spans
+
+    def is_valid_sentence_candidate(highlighted_cells, annotated_sentence):
+      # has stat candidates:
+      for highlighted_cell in highlighted_cells:
+        # if is_valid_statistics(highlighted_cell):
+        if highlighted_cell["is_stat"]:
+          return True
+      highlighted_spans = get_highlighted_spans(highlighted_cells, annotated_sentence)
+      if len(highlighted_spans) >= 2:
+        return True
+      return False
+
+    for sentence in sentences:
+      try:
+        highlighted_cells = []
+        annotated_sentence = None
+        for row in table.annotations:
+          cells, annotated_sentence = self.row_sentence_matching(sentence, row,
+                                                                 annotated_sentence_=annotated_sentence,
+                                                                 )
+          highlighted_cells.extend(cells)
+        if force_valid or is_valid_sentence_candidate(highlighted_cells, annotated_sentence):
+          candidate_sentences.append({
+            "url": table.page_url,
+            "idx": table.iid,
+            "sentence": annotated_sentence,
+            "highlighted_cells": highlighted_cells})
+      except:
+        typ, value, tb = sys.exc_info()
+        print('*' * 30 + 'Exception' + '*' * 30, file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
     return candidate_sentences
 
   def element_sentence_matching(self, element, annotated_sentence):
@@ -740,14 +722,14 @@ def process():
   parser.add_argument("--table_output_file", type=Path)
   parser.add_argument("--sentence_output_file", type=Path)
   parser.add_argument('--worker_num', type=int, default=multiprocessing.cpu_count() - 1, required=False)
-  parser.add_argument("--mode", choices=["EXTRACT_TABLE_HTML", "EXTRACT_CONTEXT_TABLE_PAIR"])
+  parser.add_argument("--mode", choices=["EXTRACT_TABLE_HTML", "EXTRACT_CONTEXT", "EXTRACT_CONTEXT_TABLE_PAIR"])
   args = parser.parse_args()
 
   job_queue = multiprocessing.Queue(maxsize=2000)
   sentence_queue, table_queue = None, None
-  if args.mode in ["EXTRACT_CONTEXT_TABLE_PAIR"]:
+  if args.mode in ["EXTRACT_CONTEXT_TABLE_PAIR", "EXTRACT_CONTEXT"]:
     sentence_queue = multiprocessing.Queue()
-  if args.mode in ["EXTRACT_TABLE_HTML"]:
+  if args.mode in ["EXTRACT_CONTEXT_TABLE_PAIR", "EXTRACT_TABLE_HTML"]:
     table_queue = multiprocessing.Queue()
   num_workers = args.worker_num
 
@@ -757,14 +739,14 @@ def process():
 
   workers = []
   for i in range(num_workers):
-    worker = TableExtractor(args.mode, job_queue, table_queue, sentence_queue, daemon=True)
+    worker = WikiExtractor(args.mode, job_queue, table_queue, sentence_queue, daemon=True)
     worker.start()
     workers.append(worker)
 
-  if args.mode in []:
+  if args.mode in ["EXTRACT_CONTEXT_TABLE_PAIR", "EXTRACT_CONTEXT"]:
     sentence_writer = multiprocessing.Process(target=example_writer_process, daemon=True, args=(args.sentence_output_file, sentence_queue))
     sentence_writer.start()
-  if args.mode in ["EXTRACT_TABLE_HTML"]:
+  if args.mode in ["EXTRACT_CONTEXT_TABLE_PAIR", "EXTRACT_TABLE_HTML"]:
     table_writer = multiprocessing.Process(target=example_writer_process, daemon=True, args=(args.table_output_file, table_queue))
     table_writer.start()
 
@@ -773,10 +755,10 @@ def process():
     worker.join()
   loader.join()
 
-  if args.mode in ["EXTRACT_TABLE_HTML"]:
+  if args.mode in ["EXTRACT_CONTEXT_TABLE_PAIR", "EXTRACT_TABLE_HTML"]:
     table_queue.put(None)
     table_writer.join()
-  if args.mode in []:
+  if args.mode in ["EXTRACT_CONTEXT_TABLE_PAIR", "EXTRACT_CONTEXT"]:
     sentence_queue.put(None)
     sentence_writer.join()
 
@@ -786,15 +768,16 @@ def debug():
   parser = ArgumentParser()
   parser.add_argument('--input_file', type=Path, required=True)
   parser.add_argument("--output_file", type=Path, required=True)
+  parser.add_argument("--mode", choices=["EXTRACT_TABLE_HTML", "EXTRACT_CONTEXT", "EXTRACT_CONTEXT_TABLE_PAIR"])
   args = parser.parse_args()
   fout = args.output_file.open('w')
-  extractor = TableExtractor(None, None, None)
+  extractor = WikiExtractor(args.mode, None, None, None)
   for line in tqdm(args.input_file.open()):
     example = json.loads(line)
     print(example["url"])
     # context_sents = extractor.extract_context(example["url"], example["data"])
-    for table in extractor._extract_table(example["url"], example["data"]):
-      fout.write(json.dumps(table) + "\n")
+    for context in extractor.extract_context(example["url"], example["data"]):
+      fout.write(json.dumps(context) + "\n")
       # matched_sentences = extractor.matching(table, context_sents)
       # for matched_sentence in matched_sentences:
       #   fout.write(json.dumps(matched_sentence) + "\n")
@@ -810,21 +793,23 @@ def debug_context_table_pair():
   r = http.request('GET', url)
   if r.status == 200:
     data = r.data.decode('utf-8')
-    extractor = TableExtractor("EXTRACT_TABLE_HTML", None, None, None)
+    extractor = WikiExtractor("EXTRACT_TABLE_HTML", None, None, None)
 
     # for idx, table in enumerate(extractor._extract_table(url, data)):
     #   print(table)
     context_sents = extractor.extract_context(url, data)
     # for sent in context_sents:
     #   print(sent)
-    for idx, table in enumerate(extractor.extract_table(url, data)):
+    for idx, table in enumerate(extractor._extract_table(url, data)):
       t = Table.from_extractor_annotation(table, config=config)
-      matched_sentences = extractor.matching(table, context_sents)
+      # raise NotImplementedError()
+      # matched_sentences = extractor.matching(table, context_sents)
+      matched_sentences = extractor._matching(t, context_sents)
       print("Table {}".format(idx))
       print(t)
       for matched_sentence in matched_sentences:
         print(matched_sentence["sentence"]["text"])
-        print([cell["text"] for cell in matched_sentence["highlighted_cells"]])
+        print(matched_sentence["highlighted_cells"])
 
 
 def debug_page():
@@ -853,7 +838,7 @@ def debug_page():
   r = http.request('GET', url)
   if r.status == 200:
     data = r.data.decode('utf-8')
-    extractor = TableExtractor("EXTRACT_TABLE_HTML", None, None, None)
+    extractor = WikiExtractor("EXTRACT_TABLE_HTML", None, None, None)
     # interlingual_link = extractor.extract_interlingual_link(url, data)
     # infobox = extractor.extract_infobox(url, data)
     for idx, table in enumerate(extractor._extract_table(url, data)):
@@ -883,6 +868,6 @@ def debug_page():
 if __name__ == "__main__":
   # debug()
   # debug_page()
-  debug_context_table_pair()
-  # process()
+  # debug_context_table_pair()
+  process()
   # table_process()

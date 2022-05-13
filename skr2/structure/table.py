@@ -10,7 +10,9 @@ from skr2.structure.template import _to_floats, convert_to_float
 import os
 import json
 import sqlite3
+import spacy
 
+nlp = spacy.load('en_core_web_sm')
 
 _MAX_INT = 2**32 - 1
 
@@ -42,6 +44,83 @@ def table_linearization(table_array):
   for row_idx, row in enumerate(table_array[1:]):
     strs.append("row {}: {}".format(row_idx, " | ".join(row)))
   return " | ".join(strs)
+
+def normalize_cell_value(text):
+  for month in [("Jan ", "January "),
+                ("Feb ", "February "),
+                ("Mar ", "March "),
+                ("Apr ", "April "),
+                ("May ", "May "),
+                ("Jun ", "June "),
+                ("Jul ", "July "),
+                ("Aug ", "August "),
+                ("Sep ", "September "),
+                ("Oct ", "October "),
+                ("Nov ", "November "),
+                ("Dec ", "December ")]:
+    if month[0] in text:
+      text = text.replace(month[0], month[1])
+  return text
+
+
+def is_num(value):
+  try:
+    float(value)
+    return True
+  except:
+    return False
+
+NUMERICAL_NER_TAGS = {'TIME', 'PERCENT', 'MONEY', 'QUANTITY', 'CARDINAL'}
+IGNORE_TOKENS = ['(', ')']
+SPECIAL_TOKENS = ['°C', '°F']
+def is_valid_statistics(sample_value_entry):
+  if sample_value_entry.get("header", None) == "Year":
+    return False
+  value = sample_value_entry["text"]
+  if "," in value or "." in value or ":" in value:
+    if is_num(value.replace(",", "").replace(".", "").replace(":", "")):
+      return True
+
+  if any([special in value for special in SPECIAL_TOKENS]):
+    return True
+
+  if len(value) == 4 or len(value) == 1:
+    return False
+
+  num_numerical_tags = 0
+  num_other_tags = 0
+  for token, tag in zip(sample_value_entry["tokens"], sample_value_entry["ner_tags"]):
+    if tag in NUMERICAL_NER_TAGS:
+      num_numerical_tags += 1
+    elif token in IGNORE_TOKENS:
+      continue
+    else:
+      num_other_tags += 1
+  return True if num_numerical_tags > num_other_tags else False
+
+def annotate_cell_values(rows, nlp):
+  annotations = []
+  schema = {}
+  if len(rows) > 0:
+    for col_idx, cell_value in enumerate(rows[0]):
+      schema[col_idx] = cell_value
+  for row_idx, row in enumerate(rows):
+    annotation = []
+    for col_idx, cell_value in enumerate(row):
+      cell_value = normalize_cell_value(cell_value)
+      text = nlp(cell_value)
+      annotated_cell_value = {
+        "row_idx": row_idx,
+        "col_idx": col_idx,
+        "ner_tags": [token.ent_type_ for token in text],
+        "tokens": [token.text for token in text],
+        "text": cell_value,
+        "header": schema.get(col_idx, "None")}
+      # cell_value_type = infer_column_type_from_sampled_value(annotated_cell_value)
+      annotated_cell_value["is_stat"] = is_valid_statistics(annotated_cell_value)
+      annotation.append(annotated_cell_value)
+    annotations.append(annotation)
+  return annotations
 
 class SamplingTask(enum.Enum):
   RETRIEVAL = 0
@@ -273,10 +352,18 @@ class Table:
     self.rng = random.Random(fingerprint(repr(self.iid)) % _MAX_INT)
 
   def get_cell(self, row_index, column_index):
-    if row_index == 0:
-      return self.columns[column_index]
+    if self.config.no_process:
+      return Cell(
+        text=self.table[row_index][column_index],
+        table=self,
+        column=None,
+        row_index=row_index,
+        column_index=column_index)
     else:
-      return self.contents[row_index-1][column_index]
+      if row_index == 0:
+        return self.columns[column_index]
+      else:
+        return self.contents[row_index-1][column_index]
 
   def linearize_table(self, use_column_name=False):
     if self.config.no_process:
@@ -560,9 +647,11 @@ class Table:
     try:
       table_array = [[cell["text"] for cell in row] for row in d["annotations"]]
       page_title = d["page_title"]["text"]
+      annotations = d["annotations"]
     except:
       table_array = d["annotations"]
       page_title = d["page_title"]
+      annotations = annotate_cell_values(table_array, nlp)
     if len(table_array) == 0:
       # raise ValueError("The table is empty")
       return None
@@ -576,6 +665,7 @@ class Table:
       section_titles=d["section_titles"],
       table_caption=d["table_caption"],
       page_url=d["url"],
+      annotations=annotations,
       page_table_index=d["idx"])
 
   @classmethod
@@ -610,12 +700,17 @@ class Table:
   def from_totto_annotation(cls, d, config):
     columns = [c["value"] for c in d["table"][0]]
     contents = [[c["value"] for c in r] for r in d["table"][1:]]
+    if config.no_process:
+      annotations = None
+    else:
+      annotations = annotate_cell_values([columns] + contents, nlp)
     return cls(
       config=config,
       table=[columns] + contents,
       page_title=d["table_page_title"],
       section_titles=d["table_section_title"],
       page_url=d["table_webpage_url"],
+      annotations=annotations
     )
 
 from skr2.structure.template import (

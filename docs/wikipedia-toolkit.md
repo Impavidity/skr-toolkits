@@ -46,3 +46,33 @@ for i in {0..149}; do
   --output_file data/examples/wikipedia/zh/html/seg_${seg_id}.jsonl > logs/wikipedia/zh/seg_${seg_id}.log
 done
 ```
+
+## How to index Wikipedia Sentences?
+
+Extract context in sentence level.
+```
+nohup python -u -m skr2.wikipedia.wiki_extractor \
+--input_file path_to_wikipedia_html \
+--sentence_output_file data/wikipedia/en/context/sentence.json \
+--mode EXTRACT_CONTEXT > extract_context.log &
+```
+
+Then convert the output into [Anserini](https://github.com/castorini/anserini) format.
+
+```
+nohup python -u skr2/wikipedia/indexing/convert_context_to_anserini.py \
+--input_file data/wikipedia/en/context/sentence.json \
+--output_file data/wikipedia/en/context/anserini/1.json > convert_context.log &
+```
+
+Indexing.
+
+```
+python -m pyserini.index.lucene \
+  --collection JsonCollection \
+  --input data/wikipedia/en/context/anserini/ \
+  --index data/wikipedia/en/context/index \
+  --generator DefaultLuceneDocumentGenerator \
+  --threads 1 \
+  --storePositions --storeDocvectors --storeRaw
+```

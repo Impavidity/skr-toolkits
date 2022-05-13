@@ -28,6 +28,7 @@ class Context:
   def __init__(self,
                config=None,
                text=None,
+               meta=None,
                page_url=None,
                page_table_index=None,
                annotations=None):
@@ -37,6 +38,8 @@ class Context:
     self.page_title_index = page_table_index
     self._tokens = None
     self.tokenizer = SpacyTokenizerMagic.get()
+    self.meta = meta
+    self.annotations = annotations
 
   def __repr__(self):
     return self.text
@@ -103,6 +106,11 @@ class Context:
     return cls(
       config=config,
       text=d["sentence_annotations"][0]["final_sentence"],
+      meta={
+        "original_sentence": d["sentence_annotations"][0]["original_sentence"],
+        "sentence_after_deletion": d["sentence_annotations"][0]["sentence_after_deletion"],
+        "sentence_after_ambiguity": d["sentence_annotations"][0]["sentence_after_ambiguity"],
+      },
       page_url=None,
       page_table_index=None,
       annotations=d["highlighted_cells"]
