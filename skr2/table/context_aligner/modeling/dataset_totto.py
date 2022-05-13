@@ -32,7 +32,10 @@ _HOMEPAGE = ""
 
 _LICENSE = "CC-BY-SA-4.0 License"
 
-_URL = ""
+_URL = {
+    "train": "https://git.uwaterloo.ca/p8shi/malaina/-/raw/master/totto/totto_train_data_alignment_classification.jsonl",
+    "dev": "https://git.uwaterloo.ca/p8shi/malaina/-/raw/master/totto/totto_dev_data_alignment_classification.jsonl"
+}
 
 
 def _load_table(table_path) -> dict:
@@ -89,17 +92,17 @@ class ToTToContextAligning(datasets.GeneratorBasedBuilder):
 
     def _split_generators(self, dl_manager):
         """Returns SplitGenerators."""
-        # data_dir = os.path.join(dl_manager.download_and_extract(_URL), 'WikiTableQuestions-master')
+        data_dir = dl_manager.download_and_extract(_URL)
         # Use local path for now
-        data_dir = "/home/p8shi/relogic-sql/data/examples/tablekit/ToTTo/totto_data/"
+        # data_dir = "/home/p8shi/relogic-sql/data/examples/tablekit/ToTTo/totto_data/"
         return [
             datasets.SplitGenerator(
                 name=datasets.Split.TRAIN,
-                gen_kwargs={"filepath": os.path.join(data_dir, "totto_train_data_alignment_classification.jsonl")},
+                gen_kwargs={"filepath": data_dir["train"]},
             ),
             datasets.SplitGenerator(
                 name=datasets.Split.VALIDATION,
-                gen_kwargs={"filepath": os.path.join(data_dir, "totto_dev_data_alignment_classification.jsonl")},
+                gen_kwargs={"filepath": data_dir["dev"]},
             )
         ]
 
