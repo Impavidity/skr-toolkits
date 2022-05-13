@@ -14,3 +14,4 @@ class EvaluateTool(object):
 
         if section in ['train', 'dev']:
             summary["all"] = float(np.mean(all_match))
+        return summary
