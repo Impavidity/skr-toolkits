@@ -30,6 +30,7 @@ if __name__ == "__main__":
         random.shuffle(dataset)
         train_dataset = dataset[:int(len(dataset) * 0.8)]
         dev_dataset = dataset[int(len(dataset) * 0.8):int(len(dataset))]
+        os.makedirs(args.output_dir, exist_ok=True)
         for split, name in zip([train_dataset, dev_dataset], ["train", "validation"]):
             with open(os.path.join(args.output_dir, "{}.json".format(name)), "w") as fout:
                 for example in split:
