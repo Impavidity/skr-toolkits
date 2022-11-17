@@ -7,6 +7,7 @@
 - How to extract triples from text?
 - How to link entities to Wikipedia?
 - How to write `run.py` for retrieval models?
+- [How to dump all Wikidata Properties?](docs/wikidata-predicate.md)
 
 ## Environment Setup
 
@@ -26,7 +27,7 @@ popd
 pip install beautifulsoup4
 pip install requests
 pip install transformers
-pip install spacy
+pip install -U spacy
 python -m spacy download en_core_web_sm
 pip install pudb
 pip install wandb
@@ -39,4 +40,8 @@ conda install -c pytorch faiss-gpu
 pip install nltk
 pip install pandas
 pip install tabulate
+pip install atpbar
+pip isntall allennlp=0.9.0
+pip uninstall overrides
+pip install overrides==3.1.0
 ```
